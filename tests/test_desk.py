@@ -1,4 +1,6 @@
 from pathlib import Path
+import urllib.error
+import urllib.request
 
 import pytest
 
@@ -84,3 +86,33 @@ def test_offline_mock_keeps_the_local_queue_visible(tmp_path: Path) -> None:
     with pytest.raises(ComfyUnavailable):
         desk.start("extra")
     assert waiting.state is JobState.WAITING
+
+
+def test_stalled_http_error_body_keeps_the_local_queue_visible(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class TimedOutBody:
+        def read(self) -> bytes:
+            raise TimeoutError("error body timed out")
+
+        def close(self) -> None:
+            pass
+
+    error = urllib.error.HTTPError(
+        f"{DEFAULT_COMFY_URL}/system_stats",
+        503,
+        "Service Unavailable",
+        None,
+        TimedOutBody(),
+    )
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: (_ for _ in ()).throw(error))
+
+    config = Config(comfy_url=DEFAULT_COMFY_URL, demo=False, data_dir=tmp_path)
+    waiting = Job(id="local", name="Local only", state=JobState.WAITING, lora="local-pack")
+    lock = GamingLock(tmp_path / "gaming.lock")
+    client = HttpComfyClient(config.comfy_url)
+    desk = Desk(config, client, lock, JsonJobStore(tmp_path / "queue.json"), JobQueue([waiting], lock, ClientExecutor(client)))
+
+    text = render_status(desk.refresh())
+    assert "Local only" in text
+    assert "unreachable" in text
+    assert "error response" in text
+    assert "unavailable until ComfyUI answers" in text

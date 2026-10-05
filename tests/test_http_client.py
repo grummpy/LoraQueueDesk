@@ -121,3 +121,24 @@ def test_urllib_transport_maps_direct_read_timeout(monkeypatch: pytest.MonkeyPat
     client = HttpComfyClient(DEFAULT_COMFY_URL)
     with pytest.raises(ComfyUnavailable, match="timed out"):
         client.health()
+
+
+def test_urllib_transport_maps_http_error_body_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    class TimedOutBody:
+        def read(self) -> bytes:
+            raise TimeoutError("error body timed out")
+
+        def close(self) -> None:
+            pass
+
+    error = urllib.error.HTTPError(
+        "http://example.invalid/system_stats",
+        503,
+        "Service Unavailable",
+        None,
+        TimedOutBody(),
+    )
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: (_ for _ in ()).throw(error))
+    client = HttpComfyClient(DEFAULT_COMFY_URL)
+    with pytest.raises(ComfyUnavailable, match="error response"):
+        client.health()

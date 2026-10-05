@@ -48,7 +48,13 @@ class UrllibTransport:
                 status = int(getattr(response, "status", 200))
                 return status, payload
         except urllib.error.HTTPError as exc:
-            payload = exc.read()
+            try:
+                payload = exc.read()
+            except TimeoutError as timeout:
+                # HTTPError carries its response body separately. A stalled
+                # error body is still an unavailable backend, not a raw
+                # exception that can hide the local queue/status page.
+                raise ComfyUnavailable(f"ComfyUI timed out while reading an error response at {url}") from timeout
             return int(exc.code), payload
         except urllib.error.URLError as exc:
             reason = getattr(exc, "reason", exc)
