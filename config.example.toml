@@ -1,0 +1,9 @@
+# Copy to lora-queue.toml in the directory you run from, or pass --config.
+# Environment variables override this file. CLI flags override both.
+
+comfy_url = "http://192.168.4.47:8188"
+# Optional path prefix if a reverse proxy mounts ComfyUI under /api.
+api_prefix = ""
+demo = false
+# data_dir = "~/.local/share/lora-queue-desk"
+timeout = 3.0
