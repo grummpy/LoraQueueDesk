@@ -14,6 +14,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ always has tomlli
 
 DEFAULT_COMFY_URL = "http://192.168.4.47:8188"
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+_FALSY = frozenset({"0", "false", "no", "off"})
 
 
 @dataclass(frozen=True)
@@ -23,6 +24,7 @@ class Config:
     data_dir: Path
     timeout: float = 3.0
     api_prefix: str = ""
+    demo_source: str = "default"
 
     @classmethod
     def load(
@@ -41,9 +43,7 @@ class Config:
         url = (url or DEFAULT_COMFY_URL).strip().rstrip("/")
         _require_http_url(url)
 
-        demo_env = (env.get("LORA_QUEUE_DEMO") or "").strip().lower()
-        file_demo = bool(file_data.get("demo"))
-        use_demo = bool(demo) or demo_env in _TRUTHY or file_demo
+        use_demo, demo_source = _demo_mode(demo, env, file_data)
 
         directory = _data_dir(data_dir, env, file_data)
         timeout = _timeout(env, file_data)
@@ -54,6 +54,7 @@ class Config:
             data_dir=directory,
             timeout=timeout,
             api_prefix=prefix,
+            demo_source=demo_source,
         )
 
 
@@ -97,6 +98,33 @@ def _timeout(env: dict[str, str] | os._Environ[str], file_data: dict) -> float:
     if value <= 0:
         raise ValueError("timeout must be greater than 0")
     return value
+
+
+def _demo_mode(
+    cli_demo: bool,
+    env: dict[str, str] | os._Environ[str],
+    file_data: dict,
+) -> tuple[bool, str]:
+    """Resolve demo mode without treating an explicit ``off`` as absent."""
+
+    if cli_demo:
+        return True, "CLI --demo"
+    if "LORA_QUEUE_DEMO" in env and str(env["LORA_QUEUE_DEMO"]).strip():
+        return _parse_bool(env["LORA_QUEUE_DEMO"], "LORA_QUEUE_DEMO"), "LORA_QUEUE_DEMO"
+    if "demo" in file_data:
+        return _parse_bool(file_data["demo"], "demo in TOML"), "TOML"
+    return False, "default"
+
+
+def _parse_bool(raw: object, source: str) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    value = str(raw).strip().lower()
+    if value in _TRUTHY:
+        return True
+    if value in _FALSY:
+        return False
+    raise ValueError(f"{source} must be one of on/off, true/false, yes/no, or 1/0")
 
 
 def _api_prefix(env: dict[str, str] | os._Environ[str], file_data: dict) -> str:

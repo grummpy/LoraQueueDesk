@@ -53,6 +53,11 @@ class UrllibTransport:
         except urllib.error.URLError as exc:
             reason = getattr(exc, "reason", exc)
             raise ComfyUnavailable(f"Cannot reach ComfyUI at {url}: {reason}") from exc
+        except TimeoutError as exc:
+            # urlopen can surface timeouts directly while opening a connection
+            # or while reading a response body.  Normalize both paths so the
+            # desk can retain and display its local queue.
+            raise ComfyUnavailable(f"ComfyUI timed out at {url}") from exc
 
 
 class HttpComfyClient:

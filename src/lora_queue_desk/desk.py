@@ -97,6 +97,7 @@ class Desk:
             devices=tuple(devices),
             prompt_running=prompt_running,
             prompt_pending=prompt_pending,
+            demo_source=self.config.demo_source,
         )
 
     def set_lock(self, on: bool) -> tuple[DeskView, list[Job]]:

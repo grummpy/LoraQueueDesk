@@ -14,6 +14,8 @@ def render_status(view: DeskView) -> str:
         f"LoRA Queue Desk {__version__}",
         f"ComfyUI  {view.comfy_url}{mode}",
     ]
+    if view.demo_source:
+        lines.append(f"Mode     {'demo' if view.demo else 'live'} via {view.demo_source}")
     if view.comfy_error:
         lines.append(f"Reach    unreachable: {view.comfy_error}")
     elif view.devices:
@@ -110,6 +112,7 @@ def render_html(view: DeskView) -> str:
         f"<p class='warn'>{_esc(view.comfy_error)}</p>" if view.comfy_error else ""
     )
     mode = "demo" if view.demo else "live"
+    mode_source = f" via {view.demo_source}" if view.demo_source else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -142,7 +145,7 @@ def render_html(view: DeskView) -> str:
 <body>
 <main>
   <h1><span>LoRA</span> Queue Desk</h1>
-  <p class="meta">{_esc(view.comfy_url)} · {_esc(mode)} · lock {_esc(lock)}</p>
+  <p class="meta">{_esc(view.comfy_url)} · {_esc(mode + mode_source)} · lock {_esc(lock)}</p>
   {banner}
   {reach}
   <h2>Jobs</h2>

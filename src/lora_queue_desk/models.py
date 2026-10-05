@@ -83,3 +83,4 @@ class DeskView:
     devices: tuple[str, ...]
     prompt_running: int | None
     prompt_pending: int | None
+    demo_source: str = ""

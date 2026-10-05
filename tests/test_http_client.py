@@ -102,3 +102,22 @@ def test_urllib_transport_maps_url_error(monkeypatch: pytest.MonkeyPatch) -> Non
     client = HttpComfyClient(DEFAULT_COMFY_URL)
     with pytest.raises(ComfyUnavailable, match="Cannot reach"):
         client.health()
+
+
+def test_urllib_transport_maps_direct_read_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        status = 200
+
+        def read(self) -> bytes:
+            raise TimeoutError("read timed out")
+
+        def __enter__(self) -> object:
+            return self
+
+        def __exit__(self, *args: object) -> bool:
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: Response())
+    client = HttpComfyClient(DEFAULT_COMFY_URL)
+    with pytest.raises(ComfyUnavailable, match="timed out"):
+        client.health()
