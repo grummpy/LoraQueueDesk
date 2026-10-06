@@ -10,6 +10,7 @@ def test_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     config = Config.load()
     assert config.comfy_url == DEFAULT_COMFY_URL == "http://192.168.4.47:8188"
     assert config.demo is False
+    assert config.demo_source == "default"
     assert config.data_dir == tmp_path / "lora-queue-desk"
     assert config.timeout == 3.0
     assert config.api_prefix == ""
@@ -25,6 +26,7 @@ def test_cli_overrides_env_overrides_file(tmp_path: Path, monkeypatch: pytest.Mo
     from_env = Config.load(config_path=str(path))
     assert from_env.comfy_url == "http://env.test:8188"
     assert from_env.demo is True
+    assert from_env.demo_source == "TOML"
     assert from_env.api_prefix == "/api"
     assert from_env.timeout == 9
 
@@ -43,3 +45,21 @@ def test_data_dir_flag(tmp_path: Path) -> None:
     config = Config.load(demo=True, data_dir=str(tmp_path / "state"))
     assert config.demo is True
     assert config.data_dir == tmp_path / "state"
+
+
+def test_explicit_environment_off_overrides_toml_demo(tmp_path: Path) -> None:
+    path = tmp_path / "desk.toml"
+    path.write_text("demo = true\n", encoding="utf-8")
+    config = Config.load(
+        config_path=str(path),
+        environ={"LORA_QUEUE_DEMO": "off"},
+    )
+    assert config.demo is False
+    assert config.demo_source == "LORA_QUEUE_DEMO"
+
+
+def test_demo_values_must_be_explicit_booleans(tmp_path: Path) -> None:
+    path = tmp_path / "desk.toml"
+    path.write_text('demo = "maybe"\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="demo in TOML"):
+        Config.load(config_path=str(path), environ={})

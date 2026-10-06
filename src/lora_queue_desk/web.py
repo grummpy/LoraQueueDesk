@@ -35,7 +35,10 @@ def make_server(config: Config, host: str, port: int) -> ThreadingHTTPServer:
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            page = render_html(Desk.open(config).refresh()).encode("utf-8")
+            # A status request must not pause jobs, interrupt a backend, or
+            # persist queue state. Lock enforcement remains an explicit CLI or
+            # coordinator action; this endpoint only reads a snapshot.
+            page = render_html(Desk.open(config).view()).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(page)))

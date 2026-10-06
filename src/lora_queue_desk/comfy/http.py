@@ -48,11 +48,22 @@ class UrllibTransport:
                 status = int(getattr(response, "status", 200))
                 return status, payload
         except urllib.error.HTTPError as exc:
-            payload = exc.read()
+            try:
+                payload = exc.read()
+            except TimeoutError as timeout:
+                # HTTPError carries its response body separately. A stalled
+                # error body is still an unavailable backend, not a raw
+                # exception that can hide the local queue/status page.
+                raise ComfyUnavailable(f"ComfyUI timed out while reading an error response at {url}") from timeout
             return int(exc.code), payload
         except urllib.error.URLError as exc:
             reason = getattr(exc, "reason", exc)
             raise ComfyUnavailable(f"Cannot reach ComfyUI at {url}: {reason}") from exc
+        except TimeoutError as exc:
+            # urlopen can surface timeouts directly while opening a connection
+            # or while reading a response body.  Normalize both paths so the
+            # desk can retain and display its local queue.
+            raise ComfyUnavailable(f"ComfyUI timed out at {url}") from exc
 
 
 class HttpComfyClient:
