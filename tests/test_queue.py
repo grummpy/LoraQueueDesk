@@ -59,7 +59,7 @@ def test_lock_pauses_running_work_and_release_does_not_resume(tmp_path: Path) ->
     assert executor.started == ["texture-upscaler"]
 
 
-def test_interrupt_failure_still_pauses_locally(tmp_path: Path) -> None:
+def test_interrupt_failure_does_not_falsely_report_a_paused_gpu(tmp_path: Path) -> None:
     executor = RecordingExecutor()
     executor.fail_interrupt = True
     lock = GamingLock(tmp_path / "gaming.lock")
@@ -67,8 +67,11 @@ def test_interrupt_failure_still_pauses_locally(tmp_path: Path) -> None:
     queue = JobQueue([running], lock, executor)
     lock.engage()
 
-    queue.apply_lock()
-    assert running.state is JobState.PAUSED
+    paused = queue.apply_lock()
+    assert paused == []
+    assert running.state is JobState.RUNNING
+    assert running.paused_by_lock is False
+    assert "Still running" in running.detail
     assert "interrupt failed" in running.detail
     assert executor.interrupted == ["pixeldreamer"]
 

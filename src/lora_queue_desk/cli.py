@@ -15,6 +15,7 @@ from lora_queue_desk.comfy.errors import ComfyError
 from lora_queue_desk.config import Config
 from lora_queue_desk.desk import Desk
 from lora_queue_desk.lock import LockEngagedError
+from lora_queue_desk.models import JobState
 from lora_queue_desk.render import render_jobs, render_lock, render_loras, render_status
 from lora_queue_desk.store import StoreError
 from lora_queue_desk.web import loopback_host, serve
@@ -139,7 +140,11 @@ def _lock(desk: Desk, action: str | None) -> int:
             names = ", ".join(job.name for job in paused)
             print(f"Paused   {names}")
         else:
-            print("Paused   (no running jobs)")
+            still_running = [job.name for job in view.jobs if job.state is JobState.RUNNING]
+            if still_running:
+                print(f"Still running   {', '.join(still_running)} (backend interrupt failed)")
+            else:
+                print("Paused   (no running jobs)")
         return 0
     if action == "off":
         view, _paused = desk.set_lock(False)
