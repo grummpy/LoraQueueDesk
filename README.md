@@ -109,7 +109,7 @@ A file whose contents are `off`, `0`, `false`, or `no` does not engage the lock.
 
 What the lock does:
 
-- `lock on` pauses every running job. The desk asks the backend to interrupt, then marks the job `paused` with `paused_by_lock`. If the interrupt fails, the job is still paused locally and the detail says so.
+- `lock on` asks the backend to interrupt every running job, then marks successful interruptions `paused` with `paused_by_lock`. If an interrupt fails, the job remains `running` with a detail message so the desk does not claim the GPU stopped.
 - `start` and `resume` do nothing to the GPU while the lock is on. The job stays waiting or paused.
 - `lock off` only clears the flag file. Jobs stay paused. Run `lora-queue resume` when the machine is free.
 - Adding a job is allowed while the lock is on. Starting it is not.

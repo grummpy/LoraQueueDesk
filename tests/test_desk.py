@@ -69,6 +69,27 @@ def test_http_lock_interrupts_and_blocks_resume(tmp_path: Path) -> None:
     assert ("POST", "/prompt") not in methods
 
 
+def test_failed_http_interrupt_keeps_the_job_running_and_reports_no_pause(tmp_path: Path) -> None:
+    running = Job(
+        id="pixeldreamer",
+        name="PixelDreamer v2",
+        state=JobState.RUNNING,
+        lora="pixel-dreamer-v2",
+        gpu="GPU 0",
+    )
+    desk, transport = _http_desk(tmp_path, [running])
+    transport.routes[("POST", "/interrupt")] = (503, {"error": "busy"})
+
+    view, paused = desk.set_lock(True)
+
+    assert paused == []
+    assert running.state is JobState.RUNNING
+    assert running.paused_by_lock is False
+    assert "Still running" in running.detail
+    assert [job.id for job in view.jobs if job.state is JobState.RUNNING] == ["pixeldreamer"]
+    assert ("POST", "/interrupt") in [(call.method, call.path) for call in transport.calls]
+
+
 def test_offline_mock_keeps_the_local_queue_visible(tmp_path: Path) -> None:
     config = Config(comfy_url=DEFAULT_COMFY_URL, demo=True, data_dir=tmp_path)
     client = MockComfyClient(online=False)

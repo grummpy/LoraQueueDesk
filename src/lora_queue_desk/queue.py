@@ -25,8 +25,8 @@ class JobQueue:
         paused: list[Job] = []
         for job in self.jobs:
             if job.state is JobState.RUNNING:
-                self._mark_paused(job, by_lock=True)
-                paused.append(job)
+                if self._mark_paused(job, by_lock=True):
+                    paused.append(job)
         return paused
 
     def start(self, job_id: str | None = None) -> Job:
@@ -62,7 +62,7 @@ class JobQueue:
             targets = [job]
         for job in targets:
             self._mark_paused(job, by_lock=False)
-        return targets
+        return [job for job in targets if job.state is JobState.PAUSED]
 
     def _activate(self, job: Job) -> None:
         self.executor.start(job)
@@ -72,16 +72,21 @@ class JobQueue:
         job.paused_by_lock = False
         job.detail = f"Running on {job.gpu}"
 
-    def _mark_paused(self, job: Job, *, by_lock: bool) -> None:
+    def _mark_paused(self, job: Job, *, by_lock: bool) -> bool:
         if job.state is JobState.RUNNING:
             try:
                 self.executor.interrupt(job)
             except Exception as exc:
-                job.detail = f"Paused locally; backend interrupt failed: {exc}"
+                # We cannot truthfully report a stopped GPU after the only
+                # stop request failed. Keep the observed running state while
+                # the lock still fail-closes future starts and resumes.
+                job.detail = f"Still running; backend interrupt failed: {exc}"
+                return False
             else:
                 job.detail = "Paused by gaming lock" if by_lock else "Paused"
         job.state = JobState.PAUSED
         job.paused_by_lock = True if by_lock else False
+        return True
 
     def _ensure_unlocked(self, action: str) -> None:
         snapshot = self.lock.snapshot()

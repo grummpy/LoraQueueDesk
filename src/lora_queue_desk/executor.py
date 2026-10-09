@@ -2,7 +2,7 @@
 
 ``start`` checks that the backend answers. It does not submit a prompt.
 ``interrupt`` is the safe half of a pause: ask the backend to stop, then
-the queue marks the job paused even if that call fails.
+the queue marks the job paused only after that call succeeds.
 """
 
 from __future__ import annotations
