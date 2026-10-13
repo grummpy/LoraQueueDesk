@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lora_queue_desk.executor import Executor
+from lora_queue_desk.executor import BackendOwnershipUnavailable, Executor
 from lora_queue_desk.lock import GamingLock, LockEngagedError
 from lora_queue_desk.models import Job, JobState
 
@@ -76,6 +76,8 @@ class JobQueue:
         if job.state is JobState.RUNNING:
             try:
                 self.executor.interrupt(job)
+            except BackendOwnershipUnavailable as exc:
+                job.detail = f"Paused locally; backend interrupt skipped: {exc}"
             except Exception as exc:
                 # We cannot truthfully report a stopped GPU after the only
                 # stop request failed. Keep the observed running state while

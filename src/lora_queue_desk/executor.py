@@ -1,8 +1,9 @@
 """What the queue is allowed to do to a backend.
 
 ``start`` checks that the backend answers. It does not submit a prompt.
-``interrupt`` is the safe half of a pause: ask the backend to stop, then
-the queue marks the job paused only after that call succeeds.
+``start`` deliberately does not submit a prompt, so local plan rows have no
+backend prompt identity.  A backend-wide interrupt would therefore be unsafe:
+it could stop work the desk did not start.  Local plans can still be paused.
 """
 
 from __future__ import annotations
@@ -11,6 +12,10 @@ from typing import Protocol
 
 from lora_queue_desk.comfy.protocol import ComfyClient
 from lora_queue_desk.models import Job
+
+
+class BackendOwnershipUnavailable(RuntimeError):
+    """A local plan cannot be safely matched to a backend prompt."""
 
 
 class Executor(Protocol):
@@ -27,4 +32,6 @@ class ClientExecutor:
         self.client.health()
 
     def interrupt(self, job: Job) -> None:
-        self.client.interrupt()
+        raise BackendOwnershipUnavailable(
+            "the desk did not submit a backend prompt for this local plan"
+        )
