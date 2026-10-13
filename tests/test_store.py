@@ -29,3 +29,15 @@ def test_invalid_json_and_state(tmp_path: Path) -> None:
     path.write_text(json.dumps({"jobs": [{"id": "x", "name": "X", "state": "cooking", "lora": "x"}]}), encoding="utf-8")
     with pytest.raises(StoreError, match="invalid job"):
         store.load()
+
+
+def test_mutation_uses_unique_temporary_files(tmp_path: Path) -> None:
+    store = JsonJobStore(tmp_path / "queue.json")
+    store.save(demo_jobs())
+
+    with store.mutation(store.load()) as jobs:
+        jobs[0].name = "changed in memory"
+
+    assert store.load()[0].name == "changed in memory"
+    assert not list(tmp_path.glob("queue.json.tmp"))
+    assert not list(tmp_path.glob(".queue.json.*.tmp"))

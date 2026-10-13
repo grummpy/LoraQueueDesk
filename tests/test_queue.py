@@ -4,7 +4,7 @@ import pytest
 
 from lora_queue_desk.lock import GamingLock, LockEngagedError
 from lora_queue_desk.models import Job, JobState
-from lora_queue_desk.queue import JobQueue
+from lora_queue_desk.queue import GpuCapacityError, JobQueue
 from tests.fakes import RecordingExecutor
 
 
@@ -55,7 +55,7 @@ def test_lock_pauses_running_work_and_release_does_not_resume(tmp_path: Path) ->
     assert resumed.state is JobState.RUNNING
     assert resumed.paused_by_lock is False
     assert resumed.gpu == "GPU 1"
-    assert resumed.detail == "Running on GPU 1"
+    assert resumed.detail == "Planned locally on GPU 1; backend execution is not observed"
     assert executor.started == ["texture-upscaler"]
 
 
@@ -133,3 +133,32 @@ def test_resume_prefers_a_lock_held_job(tmp_path: Path) -> None:
     resumed = queue.resume()
     assert resumed is held
     assert manual.state is JobState.PAUSED
+
+
+def test_resume_reallocates_a_paused_gpu_that_another_plan_now_uses(tmp_path: Path) -> None:
+    executor = RecordingExecutor()
+    paused = _job("paused", JobState.PAUSED, gpu="GPU 0")
+    running = _job("running", JobState.RUNNING, gpu="GPU 0")
+    queue = JobQueue([paused, running], GamingLock(tmp_path / "gaming.lock"), executor)
+
+    resumed = queue.resume("paused")
+
+    assert resumed.gpu == "GPU 1"
+    assert resumed.state is JobState.RUNNING
+    assert executor.started == ["paused"]
+
+
+def test_ninth_local_plan_is_refused_without_starting_the_backend(tmp_path: Path) -> None:
+    executor = RecordingExecutor()
+    jobs = [
+        _job(f"running-{index}", JobState.RUNNING, gpu=f"GPU {index}")
+        for index in range(8)
+    ]
+    ninth = _job("ninth", JobState.WAITING)
+    queue = JobQueue([*jobs, ninth], GamingLock(tmp_path / "gaming.lock"), executor)
+
+    with pytest.raises(GpuCapacityError, match="all 8"):
+        queue.start("ninth")
+
+    assert ninth.state is JobState.WAITING
+    assert executor.started == []
