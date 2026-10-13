@@ -109,7 +109,7 @@ A file whose contents are `off`, `0`, `false`, or `no` does not engage the lock.
 
 What the lock does:
 
-- `lock on` asks the backend to interrupt every running job, then marks successful interruptions `paused` with `paused_by_lock`. If an interrupt fails, the job remains `running` with a detail message so the desk does not claim the GPU stopped.
+- `lock on` pauses every running local plan and marks it `paused` with `paused_by_lock`. The starter does not submit prompts, so it has no backend prompt identity and will not call the backend-wide interrupt endpoint for a local plan; the detail records that the backend interrupt was skipped.
 - `start` and `resume` do nothing to the GPU while the lock is on. The job stays waiting or paused.
 - `lock off` only clears the flag file. Jobs stay paused. Run `lora-queue resume` when the machine is free.
 - Adding a job is allowed while the lock is on. Starting it is not.
@@ -125,10 +125,10 @@ The detector is a stub on purpose. `NullPresenceDetector.gaming_or_projection_ac
 - `GET /system_stats` for health and device names
 - `GET /models/loras` for installed pack filenames
 - `GET /queue` for the server's prompt queue (running and pending counts)
-- `POST /interrupt` when a running job is paused
+- `POST /interrupt` only for a future explicitly owned workflow integration; the local-plan starter never calls it
 - `POST /prompt` only if you call `submit_prompt` yourself with a workflow you built
 
-The desk's `start` and `resume` mark a job running in the local queue after a health check. They do **not** post a training graph. A live URL cannot start a GPU job through this starter. Wiring a real trainer workflow is left as an explicit next step so the default path stays safe.
+The desk's `start` and `resume` mark a job running in the local queue after a health check. They do **not** post a training graph, so they also cannot safely identify or interrupt a backend prompt. A live URL cannot start a GPU job through this starter. Wiring a real trainer workflow, including prompt-identity ownership, is left as an explicit next step so the default path stays safe.
 
 `MockComfyClient` returns the demo pack list and two mock GPUs. `lora-queue --demo` uses it. Tests use it, or a fake HTTP transport, and do not need a network.
 
