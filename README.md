@@ -128,7 +128,7 @@ The detector is a stub on purpose. `NullPresenceDetector.gaming_or_projection_ac
 - `POST /interrupt` when a running job is paused
 - `POST /prompt` only if you call `submit_prompt` yourself with a workflow you built
 
-The desk's `start` and `resume` mark a job running in the local queue after a health check. They do **not** post a training graph. A live URL cannot start a GPU job through this starter. Wiring a real trainer workflow is left as an explicit next step so the default path stays safe.
+The desk's `start` and `resume` mark a job as **planned locally** after a health check. They do **not** post a training graph or observe backend execution, so its GPU label is planning state rather than live telemetry. The desk documents eight local planning slots and refuses a ninth plan until a slot is free. A live URL cannot start a GPU job through this starter. Wiring a real trainer workflow is left as an explicit next step so the default path stays safe.
 
 `MockComfyClient` returns the demo pack list and two mock GPUs. `lora-queue --demo` uses it. Tests use it, or a fake HTTP transport, and do not need a network.
 
