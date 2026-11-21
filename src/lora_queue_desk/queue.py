@@ -7,6 +7,10 @@ from lora_queue_desk.lock import GamingLock, LockEngagedError
 from lora_queue_desk.models import Job, JobState
 
 
+class GpuCapacityError(ValueError):
+    """All documented local planning slots are already assigned."""
+
+
 class JobQueue:
     def __init__(self, jobs: list[Job], lock: GamingLock, executor: Executor) -> None:
         self.jobs = jobs
@@ -65,12 +69,12 @@ class JobQueue:
         return [job for job in targets if job.state is JobState.PAUSED]
 
     def _activate(self, job: Job) -> None:
+        gpu = self._planned_gpu(job, retain_paused_assignment=job.state is JobState.PAUSED)
         self.executor.start(job)
-        if not job.gpu:
-            job.gpu = self._free_gpu()
+        job.gpu = gpu
         job.state = JobState.RUNNING
         job.paused_by_lock = False
-        job.detail = f"Running on {job.gpu}"
+        job.detail = f"Planned locally on {job.gpu}; backend execution is not observed"
 
     def _mark_paused(self, job: Job, *, by_lock: bool) -> bool:
         if job.state is JobState.RUNNING:
@@ -130,10 +134,15 @@ class JobQueue:
                 return job
         raise ValueError(f"Unknown job {job_id}")
 
-    def _free_gpu(self) -> str:
+    def _planned_gpu(self, job: Job, *, retain_paused_assignment: bool) -> str:
         used = {job.gpu for job in self.jobs if job.state is JobState.RUNNING and job.gpu}
+        valid_slots = {f"GPU {index}" for index in range(8)}
+        if retain_paused_assignment and job.gpu in valid_slots and job.gpu not in used:
+            return job.gpu
         for index in range(8):
             slot = f"GPU {index}"
             if slot not in used:
                 return slot
-        return "GPU 0"
+        raise GpuCapacityError(
+            "No free planned GPU slot: all 8 local planning slots are assigned"
+        )

@@ -137,3 +137,34 @@ def test_stalled_http_error_body_keeps_the_local_queue_visible(tmp_path: Path, m
     assert "unreachable" in text
     assert "error response" in text
     assert "unavailable until ComfyUI answers" in text
+
+
+def test_independently_opened_desks_merge_additions_and_allocate_unique_planned_slots(tmp_path: Path) -> None:
+    config = Config(comfy_url=DEFAULT_COMFY_URL, demo=True, data_dir=tmp_path)
+    first = Desk.open(config)
+    second = Desk.open(config)
+
+    first.add_job(name="First plan", lora="first", rank=None, precision=None)
+    second.add_job(name="Second plan", lora="second", rank=None, precision=None)
+
+    reopened = Desk.open(config)
+    assert [job.id for job in reopened.jobs][-2:] == ["first-plan", "second-plan"]
+
+    first.start("first-plan")
+    second.start("second-plan")
+
+    persisted = {job.id: job for job in Desk.open(config).jobs}
+    assert persisted["first-plan"].gpu != persisted["second-plan"].gpu
+    assert persisted["first-plan"].detail.startswith("Planned locally")
+
+
+def test_refresh_is_read_only_even_when_a_lock_is_present(tmp_path: Path) -> None:
+    config = Config(comfy_url=DEFAULT_COMFY_URL, demo=True, data_dir=tmp_path)
+    desk = Desk.open(config)
+    before = desk.store.path.read_text(encoding="utf-8")
+    desk.lock.engage()
+
+    view = desk.refresh()
+
+    assert any(job.state is JobState.RUNNING for job in view.jobs)
+    assert desk.store.path.read_text(encoding="utf-8") == before
