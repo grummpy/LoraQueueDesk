@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 from lora_queue_desk.comfy.errors import ComfyError
 from lora_queue_desk.comfy.http import HttpComfyClient
@@ -59,9 +59,11 @@ class Desk:
         return self.queue.jobs
 
     def refresh(self) -> DeskView:
-        paused = self.queue.apply_lock()
-        if paused:
-            self.store.save(self.jobs)
+        """Return a read-only snapshot.
+
+        Polling a status page must not rewrite the queue or issue a backend
+        interrupt. Explicit lock and queue commands perform mutations.
+        """
         return self.view()
 
     def view(self) -> DeskView:
@@ -103,31 +105,20 @@ class Desk:
     def set_lock(self, on: bool) -> tuple[DeskView, list[Job]]:
         if on:
             self.lock.engage()
-            paused = self.queue.apply_lock()
+            paused = self._mutate(self.queue.apply_lock)
         else:
             self.lock.release()
-            paused = []
-        self.store.save(self.jobs)
+            paused = self._mutate(lambda: [])
         return self.view(), paused
 
     def start(self, job_id: str | None) -> Job:
-        self.queue.apply_lock()
-        try:
-            return self.queue.start(job_id)
-        finally:
-            self.store.save(self.jobs)
+        return self._mutate(lambda: self._start(job_id))
 
     def resume(self, job_id: str | None) -> Job:
-        self.queue.apply_lock()
-        try:
-            return self.queue.resume(job_id)
-        finally:
-            self.store.save(self.jobs)
+        return self._mutate(lambda: self._resume(job_id))
 
     def pause(self, job_id: str | None) -> list[Job]:
-        paused = self.queue.pause(job_id)
-        self.store.save(self.jobs)
-        return paused
+        return self._mutate(lambda: self.queue.pause(job_id))
 
     def add_job(
         self,
@@ -146,18 +137,35 @@ class Desk:
         if rank is not None and rank < 1:
             raise ValueError("rank must be >= 1")
         cleaned_precision = precision.strip().upper() if precision and precision.strip() else None
-        job = Job(
-            id=new_job_id(cleaned_name, {item.id for item in self.jobs}),
-            name=cleaned_name,
-            state=JobState.WAITING,
-            lora=cleaned_lora,
-            rank=rank,
-            precision=cleaned_precision,
-            detail="Waiting for a free GPU",
-        )
-        self.queue.add(job)
-        self.store.save(self.jobs)
-        return job
+        def add() -> Job:
+            job = Job(
+                id=new_job_id(cleaned_name, {item.id for item in self.jobs}),
+                name=cleaned_name,
+                state=JobState.WAITING,
+                lora=cleaned_lora,
+                rank=rank,
+                precision=cleaned_precision,
+                detail="Waiting for a free planned GPU slot",
+            )
+            self.queue.add(job)
+            return job
+
+        return self._mutate(add)
+
+    def _start(self, job_id: str | None) -> Job:
+        self.queue.apply_lock()
+        return self.queue.start(job_id)
+
+    def _resume(self, job_id: str | None) -> Job:
+        self.queue.apply_lock()
+        return self.queue.resume(job_id)
+
+    _Result = TypeVar("_Result")
+
+    def _mutate(self, operation: Callable[[], _Result]) -> _Result:
+        with self.store.mutation(self.jobs) as jobs:
+            self.queue.jobs = jobs
+            return operation()
 
 
 def device_names(health: dict[str, Any]) -> list[str]:
