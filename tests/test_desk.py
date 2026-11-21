@@ -47,7 +47,7 @@ def test_http_start_checks_health_and_does_not_submit(tmp_path: Path) -> None:
     assert ("POST", "/prompt") not in paths
 
 
-def test_http_lock_interrupts_and_blocks_resume(tmp_path: Path) -> None:
+def test_http_lock_pauses_an_unowned_local_plan_without_interrupting_backend(tmp_path: Path) -> None:
     running = Job(
         id="pixeldreamer",
         name="PixelDreamer v2",
@@ -61,15 +61,16 @@ def test_http_lock_interrupts_and_blocks_resume(tmp_path: Path) -> None:
     assert [job.id for job in paused] == ["pixeldreamer"]
     assert running.state is JobState.PAUSED
     assert running.paused_by_lock is True
+    assert "backend interrupt skipped" in running.detail
     with pytest.raises(LockEngagedError):
         desk.resume("pixeldreamer")
     assert running.state is JobState.PAUSED
     methods = [(call.method, call.path) for call in transport.calls]
-    assert ("POST", "/interrupt") in methods
+    assert ("POST", "/interrupt") not in methods
     assert ("POST", "/prompt") not in methods
 
 
-def test_failed_http_interrupt_keeps_the_job_running_and_reports_no_pause(tmp_path: Path) -> None:
+def test_http_manual_pause_does_not_interrupt_an_unowned_local_plan(tmp_path: Path) -> None:
     running = Job(
         id="pixeldreamer",
         name="PixelDreamer v2",
@@ -78,16 +79,12 @@ def test_failed_http_interrupt_keeps_the_job_running_and_reports_no_pause(tmp_pa
         gpu="GPU 0",
     )
     desk, transport = _http_desk(tmp_path, [running])
-    transport.routes[("POST", "/interrupt")] = (503, {"error": "busy"})
+    paused = desk.pause(running.id)
 
-    view, paused = desk.set_lock(True)
-
-    assert paused == []
-    assert running.state is JobState.RUNNING
-    assert running.paused_by_lock is False
-    assert "Still running" in running.detail
-    assert [job.id for job in view.jobs if job.state is JobState.RUNNING] == ["pixeldreamer"]
-    assert ("POST", "/interrupt") in [(call.method, call.path) for call in transport.calls]
+    assert paused == [running]
+    assert running.state is JobState.PAUSED
+    assert "backend interrupt skipped" in running.detail
+    assert ("POST", "/interrupt") not in [(call.method, call.path) for call in transport.calls]
 
 
 def test_offline_mock_keeps_the_local_queue_visible(tmp_path: Path) -> None:
